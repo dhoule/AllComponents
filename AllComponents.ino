@@ -22,7 +22,7 @@ RTC_DS1307 RTC;
 // LCD pins d4, d5, d6, d7 to Arduino pins 9, 8, 7, 6
 LiquidCrystal lcd(12, 11, 10, 9, 8, 7, 6);
 // These arrays hold the inputs that will be used by the moisture senor(s)
-int inputs1[] = {A0, A1}, inputs2[] = {A2, A3};
+int inputs1[] = {A0, A1};
 // relayPin: Pin 2 used by the Relay
 // backLight: pin 13 will control the backlight of LCD
 // ct: The size of 'inputs'
@@ -30,10 +30,9 @@ int inputs1[] = {A0, A1}, inputs2[] = {A2, A3};
 // relayOn: Value of 'soil' that will set the state of the system to ON
 // relayOff: Value of 'soil' that will set the sate of the system to OFF
 // systemState1: 1 = soil is wet enough. 0 = soil is too dry.
-// systemState2: 1 = soil is wet enough. 0 = soil is too dry.
 // buzzerPin: Pin 4 used by the piezo buzzer
-int relayPin1 = 2, relayPin2 = 3, backLight = 13, ct = (sizeof(inputs1)/sizeof(*inputs1)), soil = 0, relayOn = 10, 
-    relayOff = 90, systemState1, systemState2, buzzerPin = 4;
+int relayPin1 = 2, backLight = 13, ct = (sizeof(inputs1)/sizeof(*inputs1)), soil = 0, relayOn = 10, 
+    relayOff = 90, systemState1, buzzerPin = 4;
 // value: Accumulator for the values of the moisture sensers
 // avg: The average of the reading from the moisture sensors
 double value = 0.0, avg = 0.0;
@@ -67,7 +66,7 @@ boolean change_message (char *msg, int layer) {
 }
 
 /*
-  Function displays the current time as a timestamp on the 3rd row of the LCD.
+  Function displays the current time as a timestamp on the row specified by 'layer' of the LCD.
 */
 boolean write_date_time(int layer) {
   clear_row(layer);
@@ -132,36 +131,29 @@ void set_off_buzzer(){
   }  
 }
 
-void moisture_sensors(int test){
+void moisture_sensors(){
   // set/reset accumulator
   value = 0.0;
   // 3.3V Air = sensorValue of 674
   // 3.3V Straight, filtered water = sensorValue of 324
   // 5V Air = sensorValue of 1023
   // 5V Straight, filtered water = sensorValue of 420
-  if(test == 0){
-    for(int i = 0; i < ct; i++){ value += constrain(analogRead(inputs1[i]), 420, 1023); }
-  }
-  else{
-    for(int i = 0; i < ct; i++){ value += constrain(analogRead(inputs2[i]), 420, 1023); }
-  }  
+  for(int i = 0; i < ct; i++){ value += constrain(analogRead(inputs1[i]), 420, 1023); }
 
   avg = value / ct;
   // map 'avg' to a range of [0,100]
   soil = 100.0 - map(avg, 420, 1023, 0, 100);
 
   // Determine if the system's state has changed
-  if(soil < relayOn && ( test == 0 ? systemState1 == 1 : systemState2 == 1) ){
-    if( test == 0 ){ systemState1 = 0; }
-    else{ systemState2 = 0; }  
-    digitalWrite( ( test == 0 ? relayPin1 : relayPin2 ), LOW);
-    change_message("Turned ON", test);
+  if(soil < relayOn && systemState1 == 1 ){
+    systemState1 = 0; 
+    digitalWrite( relayPin1, LOW);
+    change_message("Turned ON", 0);
   }
-  if(soil > relayOff && ( test == 0 ? systemState1 == 0 : systemState2 == 0) ){
-    if( test == 0 ){ systemState1 = 1; }
-    else{ systemState2 = 1; }
-    digitalWrite( ( test == 0 ? relayPin1 : relayPin2 ), HIGH);
-    change_message("Turned OFF", test);
+  if(soil > relayOff && systemState1 == 0 ){
+    systemState1 = 1;
+    digitalWrite( relayPin1, HIGH);
+    change_message("Turned OFF", 0);
   }
 }
 
@@ -170,7 +162,6 @@ void setup () {
   Serial.begin(9600);
   // Set the pins for outputing.
   pinMode(relayPin1, OUTPUT);
-  pinMode(relayPin2, OUTPUT);
   pinMode(buzzerPin, OUTPUT);
   pinMode(backLight, OUTPUT);
   digitalWrite(backLight, HIGH); // turn backlight on. Replace 'HIGH' with 'LOW' to turn it off.
@@ -181,7 +172,6 @@ void setup () {
   // Sets up the module time and date with the computer one
   RTC.adjust(DateTime(__DATE__, __TIME__));
   systemState1 = 1;
-  systemState2 = 1;
 }
 
 void loop(){
@@ -190,22 +180,11 @@ void loop(){
 
   if(water_resistance < LOW_LEVEL_RESISTANCE){
     // The water level in the resivior is stil high enough
-    moisture_sensors(0);
+    moisture_sensors();
   }  
   else{
     change_message("Fill reservoir", -42);
     digitalWrite(relayPin1, HIGH);
-    set_off_buzzer();
-  }
-  // Need to check the second system
-  water_resistance = readResistance(SENSOR_PIN, SERIES_RESISTOR);
-  if(water_resistance < LOW_LEVEL_RESISTANCE){
-    // The water level in the resivior is stil high enough
-    moisture_sensors(2);
-  }  
-  else{
-    change_message("Fill reservoir", -42);
-    digitalWrite(relayPin2, HIGH);
     set_off_buzzer();
   }
   // wait 1/10 of a second before continuing
